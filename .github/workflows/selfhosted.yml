@@ -97,11 +97,12 @@ jobs:
 
     - name: Run crave devspace
       run: |
-        crave devspace -- "if tmux has-session -t ghactions   2>/dev/null; then 
+        crave devspace -- "if tmux has-session -t ghactions && tmux capture-pane -p -t ghactions | grep -q "Connected to Github"; then 
           echo "Runner is already Running" 
         else 
+          tmux kill-session -t ghactions;
           tmux new-session -d -s ghactions 
-          tmux send-keys -t ghactions 'cd actions-runner; ./run.sh' Enter 
+          tmux send-keys -t ghactions './actions-runner/run.sh' Enter 
           echo "Runner Started"
         fi "
   test:
@@ -235,7 +236,8 @@ jobs:
         lunch ${{ github.event.inputs.PRODUCT_NAME }}-${{ github.event.inputs.BUILD_TYPE }} && \
         make installclean && \
         ${{ github.event.inputs.BUILD_COMMAND }}"
-
+      timeout-minutes: 720  
+      
       # Only reach this wheter the user killed the workflow.
     - name: Execute if the job is cancelled
       if: ${{ cancelled() }}
