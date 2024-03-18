@@ -34,7 +34,7 @@ on:
       LOCAL_MANIFEST_BRANCH:
         description: "Personal local manifest's branch:"
         required: false
-        default: 'rise14-RMX1901'
+        default: 'droid'
       DEVICE_NAME:
         description: "Device's codename:"
         required: true
@@ -42,7 +42,7 @@ on:
       PRODUCT_NAME:
         description: "Product to build:"
         required: true
-        default: "rising_RMX1901"
+        default: "aosp_RMX1901"
       BUILD_COMMAND:
         description: 'Command to be used for compiling:'
         required: true
