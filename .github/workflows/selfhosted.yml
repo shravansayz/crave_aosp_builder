@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-name: Start job for building through Crave(self-hosted)
+name: Crave Builder(self-hosted)
 on:
   workflow_dispatch:
     # Various inputs to simplify usage of workflow.
@@ -20,6 +20,7 @@ on:
           - 'LineageOS 21.0'
           - 'ArrowOS 13.1'
           - 'DerpFest 13.0'
+          - 'CipherOS 14'
       BUILD_DIFFERENT_ROM:
         description: "Command to initialize a different 'repo' project:"
         required: false
@@ -113,10 +114,33 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
     steps:
-      # Clean the workflow before initialization.
-    - name: Cleanup
-      run: rm -rf ${PWD}/*
-
+      # Create a project folder
+    - name: Create Project Folders
+      run: |
+        case "${{ github.event.inputs.BASE_PROJECT }}" in
+        "ArrowOS 13.1")
+          export PROJECTFOLDER="/crave-devspaces/Arrow13"
+        ;;
+        "DerpFest 13.0")
+          export PROJECTFOLDER="/crave-devspaces/DerpFest13"
+        ;;
+        "LineageOS 21.0")
+          export PROJECTFOLDER="/crave-devspaces/Lineage21"
+        ;;
+        "LineageOS 20.0")
+          export PROJECTFOLDER="/crave-devspaces/Lineage20"
+        ;;
+        "CipherOS 14")
+          export PROJECTFOLDER="/crave-devspaces/Cipher14"
+        ;;
+        esac
+        if [ -d "$PROJECTFOLDER" ]; then
+          echo "$PROJECTFOLDER directory exists, skipping..."
+        else
+          mkdir $PROJECTFOLDER
+        fi
+        echo "PROJECTFOLDER=$PROJECTFOLDER" >> "$GITHUB_ENV"
+        
       # Check-out in order to access the repository's files.
     - name: Check-out to repository
       uses: actions/checkout@v4
@@ -124,6 +148,7 @@ jobs:
       # Set-up a spearate directory for the device.
     - name: Set-up workspace environment
       run: |
+        cd $PROJECTFOLDER
         mkdir ${{ github.event.inputs.DEVICE_NAME }}
         cd ${{ github.event.inputs.DEVICE_NAME }}
       continue-on-error: true
@@ -157,7 +182,11 @@ jobs:
       # Test Your Personal 'Local Manifests' against The ROM
     - name: Test Local Manifests
       run: |
-             if [ "${{ github.event.inputs.BUILD_DIFFERENT_ROM }}" == "echo 'Build Starting!'" ]; then
+        cd $PROJECTFOLDER
+        rm -rf tester
+        mkdir tester
+        cd tester 
+        if [ "${{ github.event.inputs.BUILD_DIFFERENT_ROM }}" == "echo 'Build Starting!'" ]; then
               case "${{ github.event.inputs.BASE_PROJECT }}" in
                   "ArrowOS 13.1")
                     repo init -u https://github.com/ArrowOS/android_manifest.git -b arrow-13.1 --depth=1
@@ -171,11 +200,14 @@ jobs:
                   "LineageOS 20.0")
                     repo init -u https://github.com/LineageOS/android.git -b lineage-20.0 --git-lfs --depth=1
                   ;;
+                  "CipherOS 14")
+                    repo init -u https://github.com/CipherOS/android_manifest.git -b fourteen --git-lfs --depth=1
+                  ;;
               esac
              else
                       ${{ github.event.inputs.BUILD_DIFFERENT_ROM }}
                       
-              fi
+              fi 
               git clone ${{ github.event.inputs.LOCAL_MANIFEST }} --depth 1 -b ${{ github.event.inputs.LOCAL_MANIFEST_BRANCH }} .repo/local_manifests && \
               timeout 1m repo sync --force-sync || { exit_code=$?; [ $exit_code -eq 124 ] || (echo "Error: Process failed with exit code $exit_code"; exit $exit_code); }
               rm -rf .repo
@@ -184,14 +216,18 @@ jobs:
       # Download and configure 'crave'.
     - name: Configure the 'crave' environment
       run: |
+        mkdir -p $PROJECTFOLDER/.repo/manifests
         if [ "${DCDEVSPACE}" == "1" ]; then
         echo 'No need to set up crave, we are already running in devspace!'
+        cp crave.yaml $PROJECTFOLDER/.repo/manifests
         else
           curl -s https://raw.githubusercontent.com/accupara/crave/master/get_crave.sh | bash -s --
           mv ${PWD}/crave ${HOME}/bin/
           sudo ln -sf /home/${USER}/bin/crave /usr/bin/crave
           envsubst < ${PWD}/crave.conf.sample >> ${PWD}/crave.conf
-          rm -rf ${PWD}/crave.conf.sample          
+          rm -rf ${PWD}/crave.conf.sample       
+          cp crave.conf $PROJECTFOLDER 
+          cp crave.yaml $PROJECTFOLDER/.repo/manifests
         fi
       env:
         CRAVE_USERNAME: ${{  secrets.CRAVE_USERNAME  }}
@@ -200,32 +236,50 @@ jobs:
       # Initialize the previously choosen 'repo' project.
     - name: Set the 'crave' project
       run: |
-        jq '.projects = []' ~/crave.conf > tmp && mv tmp ~/crave.conf
+        cd $PROJECTFOLDER
         case "${{ github.event.inputs.BASE_PROJECT }}" in
           "ArrowOS 13.1")
             repo init -u https://github.com/ArrowOS/android_manifest.git -b arrow-13.1 --depth=1
+            export BUILD_DIFFERENT_ROM="repo init -u https://github.com/ArrowOS/android_manifest.git -b arrow-13.1 --depth=1"
           ;;
           "DerpFest 13.0")
             repo init -u https://github.com/DerpFest-AOSP/manifest.git -b 13 --depth=1
+            export BUILD_DIFFERENT_ROM="repo init -u https://github.com/DerpFest-AOSP/manifest.git -b 13 --depth=1"
           ;;
           "LineageOS 21.0")
             repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --git-lfs --depth=1
+            export BUILD_DIFFERENT_ROM="repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --git-lfs --depth=1"
           ;;
           "LineageOS 20.0")
             repo init -u https://github.com/accupara/los20.git -b lineage-20.0 --git-lfs --depth=1
+            export BUILD_DIFFERENT_ROM="repo init -u https://github.com/accupara/los20.git -b lineage-20.0 --git-lfs --depth=1"
+          ;;
+          "CipherOS 14")
+            repo init -u https://github.com/CipherOS/android_manifest.git -b fourteen --git-lfs --depth=1
+            export BUILD_DIFFERENT_ROM="repo init -u https://github.com/CipherOS/android_manifest.git -b fourteen --git-lfs --depth=1"
           ;;
         esac
-        
+        if [ "${{ github.event.inputs.BUILD_DIFFERENT_ROM }}" == "echo 'Build Starting!'" ]; then
+          echo "Building ${{ github.event.inputs.BASE_PROJECT }}"
+        else
+          export BUILD_DIFFERENT_ROM="${{ github.event.inputs.BUILD_DIFFERENT_ROM }}"
+          echo "Building $BUILD_DIFFERENT_ROM"
+        fi
+        echo "BUILD_DIFFERENT_ROM=$BUILD_DIFFERENT_ROM" >> "$GITHUB_ENV"
+
       # Create a 'crave' job for building.
     - name: Start compilation through 'crave'
       run: |
+        cd $PROJECTFOLDER
+        
+        jq '.projects = []' ~/crave.conf > tmp && mv tmp ~/crave.conf
         if [ "${{ github.event.inputs.CLEAN_BUILD }}" == "yes" ]; then
            export CLEAN="clean"
         fi
 
         crave run --no-patch --${CLEAN} "rm -rf .repo/local_manifests/ ${{ github.event.inputs.REMOVALS }} && \
         # Clone local_manifests repository
-        ${{ github.event.inputs.BUILD_DIFFERENT_ROM }} ; \
+        $BUILD_DIFFERENT_ROM ; \
         git clone ${{ github.event.inputs.LOCAL_MANIFEST }} --depth 1 -b ${{ github.event.inputs.LOCAL_MANIFEST_BRANCH }} .repo/local_manifests && \
 
         if [ ! $? == 0 ]; then \
@@ -233,7 +287,7 @@ jobs:
         fi \
         
         # Sync the repositories
-        repo sync -c -j\$(nproc --all) --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync  && \
+        /opt/crave/resync.sh  && \
         
         # Set up build environment
         export BUILD_USERNAME=${{ github.actor }} ; \
@@ -249,25 +303,28 @@ jobs:
       # Only reach this wheter the user killed the workflow.
     - name: Execute if the job is cancelled
       if: ${{ cancelled() }}
-      run: crave stop --all
+      run: |
+        cd $PROJECTFOLDER
+        crave stop --all
 
       # Pull '.zip's and '.img's from 'crave'.
     - name: Retrive build artifact(s)
       run: |
-        crave pull out/target/product/*/*.zip
-        crave pull out/target/product/*/*.img
+        cd $PROJECTFOLDER
+        crave pull out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
+        crave pull out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.img
 
       # Directly upload to releases.
     - name: Upload to repository's releases page
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          ${{ github.event.inputs.DEVICE_NAME }}/recovery.img
-          ${{ github.event.inputs.DEVICE_NAME }}/boot.img
-          ${{ github.event.inputs.DEVICE_NAME }}/vendor_boot.img
-          ${{ github.event.inputs.DEVICE_NAME }}/vendor.img
-          ${{ github.event.inputs.DEVICE_NAME }}/system.img
-          ${{ github.event.inputs.DEVICE_NAME }}/*.zip
+          ${{ env.PROJECTFOLDER }}/${{ github.event.inputs.DEVICE_NAME }}/recovery.img
+          ${{ env.PROJECTFOLDER }}/${{ github.event.inputs.DEVICE_NAME }}/boot.img
+          ${{ env.PROJECTFOLDER }}/${{ github.event.inputs.DEVICE_NAME }}/vendor_boot.img
+          ${{ env.PROJECTFOLDER }}TFOLDER }}/${{ github.event.inputs.DEVICE_NAME }}/vendor.img
+          ${{ env.PROJECTFOLDER }}/${{ github.event.inputs.DEVICE_NAME }}/system.img
+          ${{ env.PROJECTFOLDER }}/${{ github.event.inputs.DEVICE_NAME }}/*.zip
         name: ${{ github.event.inputs.PRODUCT_NAME }}-${{ github.run_id }}
         tag_name: ${{ github.run_id }}
         body: |
@@ -279,6 +336,6 @@ jobs:
       # Upload to Telegram
     - name: Upload Using telegram-upload
       run: |
+        cd $$PROJECTFOLDER
         telegram-upload ${{ github.event.inputs.DEVICE_NAME }}/recovery.img ${{ github.event.inputs.DEVICE_NAME }}/boot.img ${{ github.event.inputs.DEVICE_NAME }}/vendor_boot.img ${{ github.event.inputs.DEVICE_NAME }}/vendor.img ${{ github.event.inputs.DEVICE_NAME }}/system.img ${{ github.event.inputs.DEVICE_NAME }}/*.zip
       continue-on-error: true
-      
