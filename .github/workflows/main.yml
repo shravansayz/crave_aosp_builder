@@ -77,10 +77,15 @@ jobs:
       # Create a project folder
     - name: Create Project Folders
       run: |
-        mkdir -p devspace
-        sudo mkdir -p /crave-devspaces
-        sudo ln -sf ${pwd}/devspace /crave-devspaces
-        sudo chmod 777 /crave-devspaces
+        if [ "${DCDEVSPACE}" != "1" ]; then
+          echo "Symlinking devspace folder"
+          mkdir -p devspace
+          sudo mkdir -p /crave-devspaces
+          sudo ln -sf ${pwd}/devspace /crave-devspaces
+          sudo chmod 777 /crave-devspaces
+        else
+          echo "We are already running in devspace... Skipping Symlinks"
+        fi
         case "${{ github.event.inputs.BASE_PROJECT }}" in
         "ArrowOS 13.1")
           export PROJECTFOLDER="/crave-devspaces/Arrow13"
@@ -179,8 +184,10 @@ jobs:
       # Download and configure 'crave'.
     - name: Configure the 'crave' environment
       run: |
+        mkdir -p $PROJECTFOLDER/.repo/manifests
         if [ "${DCDEVSPACE}" == "1" ]; then
           echo 'No need to set up crave, we are already running in devspace!'
+          cp crave.yaml $PROJECTFOLDER/.repo/manifests
         else
           curl -s https://raw.githubusercontent.com/accupara/crave/master/get_crave.sh | bash -s --
           mv ${PWD}/crave ${HOME}/bin/
